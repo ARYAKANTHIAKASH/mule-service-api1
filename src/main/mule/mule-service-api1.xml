@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="78d186c9-3c5e-4094-8170-0bb496668d15" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<os:object-store name="Object_store" doc:name="Object store" doc:id="96b22238-5f16-4dee-8724-0cef10d9ba19" />
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="c3789647-e231-47f9-9ab5-ed86c0f2f37c" >
+		<http:request-connection host="localhost" port="8082" />
+	</http:request-config>
+	<flow name="mule-service-api1Flow" doc:id="bbbea80f-2a5f-4890-bbc1-68d879f64bff" >
+		<http:listener doc:name="Listener" doc:id="f2574b71-0aba-4b19-b493-6d7cbdf43192" config-ref="HTTP_Listener_config" path="/api1"/>
+		<os:contains doc:name="Contains" doc:id="9fc9f320-8802-41d1-8afd-82d29134ec90" key="access-token" objectStore="Object_store"/>
+		<choice doc:name="Choice" doc:id="1ffd909a-1a54-447f-999f-5606cc6fc23e" >
+			<when expression="#[payload == true]">
+				<os:retrieve doc:name="Retrieve" doc:id="c20d5680-bea0-4a3e-b072-e76c0f069c16" key="access-token" objectStore="Object_store"/>
+				<choice doc:name="Choice" doc:id="183348d9-a2a4-47f3-9899-c096b9bcb6dd" >
+					<when expression="#[((now() - payload.created_At) as Number) &lt; payload.expiry_interval]">
+						<ee:transform doc:name="reuse-valid-token" doc:id="211b6a6f-98f8-4c85-a5bf-56084449e138" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[output application/json
+---
+{
+	"final_token": payload.token,
+	"action": "reusing valid token"
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<http:request method="GET" doc:name="mule-auth-gen-api Request" doc:id="97b8d960-a426-4e32-b482-b694dd302b2a" config-ref="HTTP_Request_configuration" path="/tokenapi"/>
+						<set-payload value="#[payload ++ {created_At: now()}]" doc:name="Set Payload" doc:id="3ddb5b99-3ec5-4b33-a246-9aee27504b88" />
+						<os:store doc:name="Store" doc:id="2217fe21-6d7c-48ed-a5c7-d0655f7ff996" key="access-token" objectStore="Object_store"/>
+						<ee:transform doc:name="Transform Message" doc:id="be492d31-cde9-4b7d-993c-b4ecc0ea47cb" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[output application/json
+---
+{
+	"final_token": payload.token,
+	"action": "generating a new token due to invalid token"
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<http:request method="GET" doc:name="mule-auth-gen-api Request" doc:id="aa6867dd-23ed-4efb-b113-987d1c80bea9" config-ref="HTTP_Request_configuration" path="/tokenapi" />
+				<set-payload value="#[payload ++ {created_At: now()}]" doc:name="Set Payload" doc:id="67b19850-8ada-496a-aec6-0fee0e0c74ba" />
+				<os:store doc:name="Store" doc:id="a71bf093-4730-4317-b349-d3a6161c30d6" key="access-token" objectStore="Object_store"/>
+				<ee:transform doc:name="Transform Message" doc:id="4e2287fc-eacf-4284-ba8c-e0717b9e48bf" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[output application/json
+---
+{
+	"final_token": payload.token,
+	"action": "generating a new token due to absence of token"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</flow>
+</mule>
